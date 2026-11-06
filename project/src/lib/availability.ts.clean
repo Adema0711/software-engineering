@@ -1,0 +1,70 @@
+import type { Room } from './types';
+
+export interface CheckResult {
+  available: boolean;
+  reasons: string[];
+}
+
+function toHHMM(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+export function minutesToHHMM(min: number): string {
+  return toHHMM(min);
+}
+
+export function hhmmToMinutes(hhmm: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+function intervalsOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
+  // touching endpoints are allowed, so strict inequality
+  return startA < endB && startB < endA;
+}
+
+export function checkAvailability(
+  room: Room,
+  start: number,
+  end: number,
+  currentTime: number,
+): CheckResult {
+  const reasons: string[] = [];
+
+  // AC1: validate interval bounds
+  if (!(0 <= start && start < end && end <= 1440)) {
+    reasons.push('End time must be after start time, and both times must be within the same day.');
+  } else if (start <= currentTime) {
+    reasons.push(`Start time must be after the current time (${toHHMM(currentTime)}).`);
+  }
+
+  // AC2: reject bookings longer than 120 minutes
+  if (end - start > 120) {
+    reasons.push('Booking duration cannot exceed 120 minutes.');
+  }
+
+  // AC3: reject when room is blocked
+  if (room.blocked) {
+    reasons.push('This room is currently blocked and unavailable for booking.');
+  }
+
+  // AC4: reject overlapping intervals (touching endpoints allowed)
+  if (reasons.length === 0) {
+    for (const b of room.bookings) {
+      if (intervalsOverlap(start, end, b.start, b.end)) {
+        reasons.push(
+          `Overlaps existing booking "${b.title}" (${toHHMM(b.start)}–${toHHMM(b.end)}).`,
+        );
+        break;
+      }
+    }
+  }
+
+  return { available: reasons.length === 0, reasons };
+}
